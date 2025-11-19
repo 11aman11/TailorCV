@@ -702,7 +702,7 @@ curl -X POST http://localhost:8000/attach_cv \
 - `pinecone_client.py` - Pinecone operations
 - `storing_client.py` - Fetch CVs for embedding
 
-**Embedding Model:** BAAI/bge-large-en-v1.5 (Hugging Face)  
+**Embedding Model:** Hugging Face BGE-large (Hugging Face)  
 **Vector Database:** Pinecone
 
 ---
@@ -746,22 +746,3 @@ Each service is independently deployable:
 
 ---
 
-## 📝 License
-
-MIT License (or your choice)
-
----
-
-## 👥 Contributors
-
-- Your Name - Initial architecture and implementation
-
----
-
-## 📞 Contact
-
-For questions or support, please open an issue on GitHub.
-
----
-
-**Built with ❤️ using FastAPI, Gemini AI, and Pinecone**
