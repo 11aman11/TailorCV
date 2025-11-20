@@ -1,31 +1,52 @@
-# StoringService - Internal API Endpoints
-# These endpoints are called by other services (not exposed to client)
-#
-# Internal Endpoints:
-# 1. POST /internal/store_cv - Store structured CV with deduplication
-#    Input: {structured_json_cv, cv_text}
-#    Output: {cv_id (hash)}
-#    Flow:
-#      - Calculate hash of cv_text
-#      - Check if CV exists (deduplication)
-#      - If exists: return existing cv_id, update Redis
-#      - If new: insert to MongoDB, publish to RabbitMQ, update Redis
-#
-# 2. GET /internal/get_cv/{cv_id} - Retrieve CV by cv_id
-#    Output: {structured_json_cv}
-#    Flow:
-#      - Query MongoDB by cv_id (hash-based identifier)
-#      - Return structured JSON
-#
-# 3. GET /internal/get_latest_cv - Get most recently uploaded CV
-#    Output: {structured_json_cv}
-#    Flow:
-#      - Check Redis for latest_cv key (fast path)
-#      - If not in Redis, query MongoDB
-#      - Return structured JSON
-#
-# Responsibilities:
-# - Route requests to service.py business logic
-# - Validate input
-# - Handle errors and return appropriate HTTP status codes
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from app.service import store_cv, get_cv_by_id
+
+router = APIRouter()
+
+class StoreCVRequest(BaseModel):
+    structured_json: dict
+    cv_text: str
+
+class StoreCVResponse(BaseModel):
+    cv_id: str
+    status: str
+    message: str
+
+@router.post("/internal/store_cv", response_model=StoreCVResponse)
+async def store_cv_endpoint(request: StoreCVRequest):
+    """
+    Store structured CV in MongoDB with deduplication
+    
+    Args:
+        structured_json: Output from GeminiService (metadata + structured_sections)
+        cv_text: Original raw CV text
+        
+    Returns:
+        cv_id (SHA256 hash) and status
+    """
+    try:
+        result = store_cv(request.structured_json, request.cv_text)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to store CV: {str(e)}")
+
+@router.get("/internal/get_cv/{cv_id}")
+async def get_cv_endpoint(cv_id: str):
+    """
+    Retrieve CV by cv_id
+    
+    Args:
+        cv_id: SHA256 hash of CV text
+        
+    Returns:
+        Complete CV document
+    """
+    try:
+        cv = get_cv_by_id(cv_id)
+        return cv
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve CV: {str(e)}")
 

@@ -1,29 +1,47 @@
-# GeminiService - Business Logic
-# Orchestrates LLM operations and combines with CV data
-#
-# Functions:
-# - structure_cv(cv_text) -> structured_json
-#   * Call llm_client.py to structure CV
-#   * Return structured JSON with sections
-#
-# - get_missing_keywords(jd_text, cv_id) -> keywords + explanation
-#   * Fetch CV from StoringService via storing_client.py
-#   * Combine JD + CV in prompt
-#   * Call llm_client.py
-#   * Return missing keywords
-#
-# - score_cv(jd_text, cv_id) -> score + explanation
-#   * Fetch CV from StoringService
-#   * Call llm_client.py with scoring prompt
-#   * Return score and explanation
-#
-# - generate_tailored_bullets(jd_text, chunks) -> bullet_points
-#   * Use chunks as context (from VectorService)
-#   * Call llm_client.py with tailoring prompt
-#   * Return bullet points
-#
-# Responsibilities:
-# - Orchestrate calls between LLM and StoringService
-# - Build prompts for different operations
-# - Parse and format LLM responses
+from datetime import datetime
+from app.llm_client import call_gemini_to_structure_cv
+
+def structure_cv(cv_text: str) -> dict:
+    """
+    Structure a CV using Gemini AI
+    
+    Args:
+        cv_text: Raw CV text string
+        
+    Returns:
+        Dictionary with metadata and structured_sections
+    """
+    if not cv_text or not cv_text.strip():
+        raise ValueError("CV text cannot be empty")
+    
+    # Generate metadata
+    metadata = generate_metadata(cv_text)
+    
+    # Extract structured sections using Gemini
+    structured_sections = call_gemini_to_structure_cv(cv_text)
+    
+    return {
+        "metadata": metadata,
+        "structured_sections": structured_sections
+    }
+
+def generate_metadata(cv_text: str) -> dict:
+    """Generate metadata about the CV"""
+    section_keywords = [
+        'education', 'experience', 'skills', 'projects',
+        'certifications', 'awards', 'leadership', 'summary'
+    ]
+    sections_detected = sum(
+        1 for keyword in section_keywords
+        if keyword.lower() in cv_text.lower()
+    )
+    
+    return {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "character_count": len(cv_text),
+        "word_count": len(cv_text.split()),
+        "sections_detected": sections_detected,
+        "parser_version": "1.0.0",
+        "extraction_method": "gemini-2.5-flash"
+    }
 

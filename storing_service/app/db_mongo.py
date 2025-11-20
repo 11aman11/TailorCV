@@ -1,31 +1,51 @@
-# StoringService - MongoDB Connection and Operations
-# Manages MongoDB connection and database operations
-#
-# Database: tailorcv_db
-# Collection: cvs
-#
-# Document Schema:
-# {
-#   "_id": ObjectId,                  # MongoDB auto-generated (internal)
-#   "cv_id": "sha256_hash",           # Our primary identifier (hash of cv_text)
-#   "cv_text": "original text...",    # Raw CV text
-#   "structured_json": {              # Structured sections from GeminiService
-#     "experience": [...],
-#     "projects": [...],
-#     "skills": [...],
-#     "education": [...]
-#   },
-#   "created_at": "2025-11-19T...",
-#   "updated_at": "2025-11-19T..."
-# }
-#
-# Operations:
-# - find_by_cv_id(cv_id) -> document or None
-# - insert_cv(cv_id, cv_text, structured_json) -> cv_id
-# - find_latest() -> document (sorted by created_at DESC)
-#
-# Responsibilities:
-# - MongoDB client initialization
-# - CRUD operations on cvs collection
-# - Index management (cv_id, created_at)
+import os
+from pymongo import MongoClient, DESCENDING
+from pymongo.errors import DuplicateKeyError
+from dotenv import load_dotenv
+
+load_dotenv()
+
+MONGODB_URI = os.getenv("MONGODB_URI")
+if not MONGODB_URI:
+    raise ValueError("MONGODB_URI not found in environment variables")
+
+client = MongoClient(MONGODB_URI)
+db = client["tailorcv_db"]
+collection = db["cvs"]
+
+def create_indexes():
+    """Create indexes on cv_id and created_at"""
+    try:
+        collection.create_index("cv_id", unique=True)
+        collection.create_index([("created_at", DESCENDING)])
+        print("Database indexes created successfully")
+    except Exception as e:
+        print(f"Index creation (likely already exist): {str(e)}")
+
+def find_cv_by_id(cv_id: str) -> dict:
+    """Find CV by cv_id hash"""
+    return collection.find_one({"cv_id": cv_id}, {"_id": 0})
+
+def insert_cv_document(document: dict) -> str:
+    """
+    Insert CV document into MongoDB
+    
+    Args:
+        document: Complete CV document with all fields
+        
+    Returns:
+        cv_id of inserted document
+        
+    Raises:
+        DuplicateKeyError if cv_id already exists
+    """
+    collection.insert_one(document)
+    return document["cv_id"]
+
+def find_latest_cv() -> dict:
+    """Find most recently created CV"""
+    return collection.find_one(
+        sort=[("created_at", DESCENDING)],
+        projection={"_id": 0}
+    )
 

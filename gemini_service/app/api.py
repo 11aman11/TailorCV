@@ -1,41 +1,32 @@
-# GeminiService - Internal API Endpoints
-# These endpoints are called by API Gateway (not exposed to client)
-#
-# Internal Endpoints:
-# 1. POST /internal/structure_cv - Structure raw CV text into JSON
-#    Input: {cv_text}
-#    Output: {structured_json_cv}
-#    Flow:
-#      - Call Gemini API with structuring prompt
-#      - Parse response into structured JSON format
-#      - Return structured CV
-#
-# 2. POST /internal/missing_keywords - Find missing keywords
-#    Input: {jd_text, cv_id}
-#    Output: {missing_keywords: [...], explanation: "..."}
-#    Flow:
-#      - Call StoringService.getCV(cv_id) to fetch structured CV
-#      - Call Gemini API with JD + CV
-#      - Return missing keywords and explanation
-#
-# 3. POST /internal/score - Score CV against job description
-#    Input: {jd_text, cv_id}
-#    Output: {score: 85, explanation: "..."}
-#    Flow:
-#      - Call StoringService.getCV(cv_id) to fetch structured CV
-#      - Call Gemini API with scoring prompt
-#      - Return score and explanation
-#
-# 4. POST /internal/tailored_bullets - Generate tailored bullet points
-#    Input: {jd_text, chunks: [{text, section}, ...]}
-#    Output: {bullets: [...]}
-#    Flow:
-#      - Receive JD and similar chunks from VectorService
-#      - Call Gemini API with context
-#      - Return generated bullet points
-#
-# Responsibilities:
-# - Route requests to service.py business logic
-# - Validate input
-# - Handle errors and return appropriate HTTP status codes
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from app.service import structure_cv
+
+router = APIRouter()
+
+class StructureCVRequest(BaseModel):
+    cv_text: str
+
+class StructureCVResponse(BaseModel):
+    metadata: dict
+    structured_sections: dict
+
+@router.post("/internal/structure_cv", response_model=StructureCVResponse)
+async def structure_cv_endpoint(request: StructureCVRequest):
+    """
+    Structure raw CV text into JSON format
+    
+    Args:
+        cv_text: Raw CV text string
+        
+    Returns:
+        metadata and structured_sections
+    """
+    try:
+        result = structure_cv(request.cv_text)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to structure CV: {str(e)}")
 
