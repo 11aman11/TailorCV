@@ -9,9 +9,9 @@
 Check diagram, for now only Service 1 - Storing Service (this): 
 only 1.1 (StoreCv) and 1.2 (getCV) are done. 
 from Service 2 - Gemini Service:
-2.1 (StrcutreCV) is done
-2.2 (Almost done not full complete so not pushed this yet)
-2.3 (Almost done not full complete so not pushed this yet)
+2.1 (StructureCV) is done
+2.2 (Missing Keywords) is done
+2.3 (Score) - Not yet implemented
 
 We still have to implement full flow of exposed APIs (client) and all the interal APIs and system flow for those exposed APIs to travel within those services by their own APIs. (For more info reach out to me - Aman before you start from somehwhere to make things clear)
 
@@ -25,6 +25,7 @@ We still have to implement full flow of exposed APIs (client) and all the intera
 - MongoDB Atlas integration
 - Automatic index creation
 - CV storage and retrieval
+- Missing keywords analysis (CV vs Job Description)
 
 ---
 
@@ -44,8 +45,16 @@ We still have to implement full flow of exposed APIs (client) and all the intera
 - Generates metadata: timestamp, word count, character count, sections detected
 - Returns structured JSON with both metadata and structured_sections
 
-**Internal API Endpoint:**
-- `POST /internal/structure_cv` - Takes cv_text, returns structured JSON
+**Internal API Endpoints:**
+1. `POST /internal/structure_cv` - Takes cv_text, returns structured JSON
+2. `POST /internal/missing_keywords` - Takes cv_id and job_description, returns keyword analysis
+
+**New: Missing Keywords Analysis**
+- Compares CV against job description using Gemini AI
+- Identifies technical and soft skills the candidate HAS
+- Identifies technical and soft skills the candidate is MISSING
+- Uses semantic matching (e.g., "Spring Boot" matches "Java frameworks")
+- Returns cv_id and filename for identification
 
 ---
 
@@ -295,6 +304,71 @@ Complete CV document from MongoDB with all fields
 
 ---
 
+### Test 6: Missing Keywords Analysis
+
+**Access Swagger UI:**
+```
+http://localhost:8002/docs
+```
+
+**Test Endpoint:** `POST /internal/missing_keywords`
+
+**Prerequisites:**
+- Both GeminiService (port 8002) and StoringService (port 8001) must be running
+- At least one CV must be stored in MongoDB (use cv_id from Test 2)
+
+**Sample Request:**
+```json
+{
+  "cv_id": "5fb195e50e7dd41b037b52131883e13ec36a6619fb3208cb80693464be0ca12c",
+  "job_description": "We are looking for a Backend Software Engineer with expertise in Kubernetes, Go (Golang), Apache Kafka, and microservices architecture. The ideal candidate should have experience with distributed systems, cloud platforms (AWS/GCP), and strong problem-solving skills. Experience with React, GraphQL, and MongoDB is a plus. We value strong communication skills and the ability to work in cross-functional teams."
+}
+```
+
+**Expected Response:**
+```json
+{
+  "cv_id": "5fb195e50e7dd41b037b52131883e13ec36a6619fb3208cb80693464be0ca12c",
+  "filename": "Unknown",
+  "keywords_you_have": {
+    "technical": [
+      "AWS",
+      "Microservices",
+      "Cloud platforms",
+      "MongoDB"
+    ],
+    "soft": [
+      "Problem-solving",
+      "Communication",
+      "Cross-functional teams"
+    ]
+  },
+  "keywords_missing": {
+    "technical": [
+      "Kubernetes",
+      "Go (Golang)",
+      "Apache Kafka",
+      "Distributed systems",
+      "React",
+      "GraphQL"
+    ],
+    "soft": []
+  }
+}
+```
+
+**What It Does:**
+1. Fetches the CV from StoringService using cv_id
+2. Extracts structured_sections from the CV
+3. Calls Gemini AI to compare CV against job description
+4. Uses semantic matching (e.g., "Java" matches "backend development")
+5. Categorizes keywords into technical and soft skills
+6. Returns what the candidate HAS and what they're MISSING
+
+**Status:** ✅ Ready for Testing
+
+---
+
 ## Test Results Summary
 
 | Test | Component | Status | Notes |
@@ -305,6 +379,7 @@ Complete CV document from MongoDB with all fields
 | Deduplication | StoringService | ✅ Pass | Prevented duplicate storage of same CV |
 | Database Connection | StoringService | ✅ Pass | Connected to MongoDB Atlas successfully |
 | Index Creation | StoringService | ✅ Pass | Indexes created automatically on startup |
+| Missing Keywords | GeminiService + StoringService | 🔄 Ready | Analyzes CV vs JD for matching/missing keywords |
 
 ---
 

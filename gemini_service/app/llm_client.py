@@ -5,11 +5,36 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def initialize_gemini():
-    """Initialize Gemini API with API key from environment"""
-    api_key = os.getenv('GEMINI_API_KEY')
+def initialize_gemini(service_type: str = "structure"):
+    """
+    Initialize Gemini API with service-specific API key
+    
+    Args:
+        service_type: "structure" | "keywords" | "score"
+        
+    Returns:
+        Gemini model instance
+        
+    Raises:
+        ValueError: If API key not found
+    """
+    api_key_map = {
+        "structure": os.getenv('GEMINI_API_KEY_STRUCTURE'),
+        "keywords": os.getenv('GEMINI_API_KEY_KEYWORDS'),
+        "score": os.getenv('GEMINI_API_KEY_SCORE')
+    }
+    
+    api_key = api_key_map.get(service_type)
+    
     if not api_key:
-        raise ValueError("GEMINI_API_KEY not found in environment variables")
+        fallback_key = os.getenv('GEMINI_API_KEY')
+        if fallback_key:
+            api_key = fallback_key
+        else:
+            raise ValueError(
+                f"GEMINI_API_KEY_{service_type.upper()} not found in environment variables. "
+                f"Please set GEMINI_API_KEY_{service_type.upper()} in your .env file."
+            )
     
     genai.configure(api_key=api_key)
     return genai.GenerativeModel('gemini-2.5-flash')
@@ -174,7 +199,7 @@ def call_gemini_to_structure_cv(cv_text: str) -> dict:
     Returns:
         Dictionary with structured CV sections
     """
-    model = initialize_gemini()
+    model = initialize_gemini(service_type="structure")
     prompt = create_parsing_prompt(cv_text)
     
     response = model.generate_content(prompt)
@@ -235,4 +260,376 @@ def validate_and_clean(data: dict) -> dict:
         }
     
     return data
+
+def create_missing_keywords_prompt(structured_sections: dict, job_description: str) -> str:
+    """
+    Create expert-level prompt for Gemini to analyze missing keywords
+    
+    Args:
+        structured_sections: Structured CV sections from MongoDB
+        job_description: Raw job description text
+        
+    Returns:
+        Formatted prompt string
+    """
+    return f"""
+You are an EXPERT KEYWORD ANALYZER and CV-JD MATCHING SPECIALIST with deep expertise in:
+- Analyzing job descriptions to identify critical skills and requirements
+- Understanding semantic relationships between skills and technologies
+- Recognizing skill variations, abbreviations, and related competencies
+- Providing accurate, actionable insights for CV optimization
+
+YOUR MISSION:
+Compare this candidate's CV (structured JSON format) against a job description and identify:
+1. Keywords/skills the candidate HAS that match the job requirements
+2. Keywords/skills the candidate is MISSING that the job requires
+
+CANDIDATE'S CV DATA (STRUCTURED):
+
+Contact Information:
+{json.dumps(structured_sections.get('contact', {}), indent=2)}
+
+Skills:
+{json.dumps(structured_sections.get('skills', {}), indent=2)}
+
+Work Experience:
+{json.dumps(structured_sections.get('experience', []), indent=2)}
+
+Education:
+{json.dumps(structured_sections.get('education', []), indent=2)}
+
+Projects:
+{json.dumps(structured_sections.get('projects', []), indent=2)}
+
+Certifications:
+{json.dumps(structured_sections.get('certifications', []), indent=2)}
+
+JOB DESCRIPTION (FULL TEXT):
+{job_description}
+
+ANALYSIS INSTRUCTIONS:
+
+1. IDENTIFY ALL KEYWORDS in the job description:
+   - Technical skills (languages, frameworks, tools, platforms, databases)
+   - Soft skills (communication, leadership, teamwork, problem-solving)
+   - Domain knowledge (ML, cloud, DevOps, backend, frontend, etc.)
+   - Methodologies (Agile, Scrum, CI/CD, TDD, etc.)
+
+2. STRICT MATCHING RULES - Only match what's EXPLICITLY in the CV:
+   - DO NOT infer skills that aren't explicitly mentioned
+   - If "Java" is in CV, match "Java" - but NOT "Spring Boot" unless mentioned
+   - Be STRICT: only match if the keyword or its direct synonym appears in CV text
+   
+3. ALLOWED SEMANTIC MATCHING (very limited and correctly):
+   - "AWS Lambda" → matches "AWS" and "Lambda" (it's the same thing)
+   - "Spring Boot" → matches "Spring" (direct relationship)
+   - DO NOT match across different cloud platforms (AWS ≠ GCP ≠ Azure, they are different)
+   
+
+4. CROSS-REFERENCE WITH CV:
+   - Check skills section thoroughly
+   - Check technologies mentioned in experience bullet points
+   - Check tools/frameworks mentioned in projects
+   - Consider certifications as proof of skills
+   - Look at education for foundational knowledge
+
+5. CATEGORIZE RESULTS:
+   - Technical: Programming languages, frameworks, tools, platforms, databases
+   - Soft Skills: Communication, leadership, collaboration, problem-solving, etc.
+
+6. BE PRECISE AND RELEVANT:
+   - ONLY include keywords that are EXPLICITLY mentioned in the CV
+   - Do NOT infer or assume skills that aren't clearly stated
+   - If JD mentions "GCP" but CV only has "AWS", do NOT match "GCP"
+   - If JD mentions "Python" but CV only has "Java", do NOT match "Python"
+   - If a skill is required in JD but not EXPLICITLY in CV, it's MISSING
+   - When in doubt, mark it as MISSING rather than giving false credit
+
+RETURN FORMAT:
+Return ONLY this JSON structure (no markdown, no code blocks, no explanation):
+
+{{
+  "keywords_you_have": {{
+    "technical": [
+      "Python",
+      "AWS",
+      "Docker"
+    ],
+    "soft": [
+      "Leadership",
+      "Communication"
+    ]
+  }},
+  "keywords_missing": {{
+    "technical": [
+      "Kubernetes",
+      "React"
+    ],
+    "soft": [
+      "Public Speaking"
+    ]
+  }}
+}}
+
+CRITICAL RULES:
+1. Return ONLY the JSON object - no markdown formatting, no code blocks, no explanatory text
+2. Use exact keyword names from the job description when possible
+3. Be STRICT with matches - only give credit for EXPLICITLY mentioned skills
+4. DO NOT infer skills from related technologies (AWS ≠ GCP, Java ≠ Python)
+5. Empty arrays [] if no matches/missing in that category
+6. Focus on what's TRULY required/mentioned in the JD
+7. Technical skills should be specific (not generic like "programming")
+8. Soft skills should be actionable (not vague like "good attitude")
+9. When uncertain, mark as MISSING rather than giving false positive credit
+
+BEGIN ANALYSIS NOW:
+"""
+
+def call_gemini_for_missing_keywords(structured_sections: dict, job_description: str) -> dict:
+    """
+    Call Gemini API to find missing keywords between CV and job description
+    
+    Args:
+        structured_sections: Structured CV sections from MongoDB
+        job_description: Raw job description text
+        
+    Returns:
+        Dictionary with keywords_you_have and keywords_missing
+    """
+    model = initialize_gemini(service_type="keywords")
+    prompt = create_missing_keywords_prompt(structured_sections, job_description)
+    
+    response = model.generate_content(prompt)
+    response_text = response.text.strip()
+    
+    # Clean up response (remove markdown if present)
+    if response_text.startswith('```'):
+        lines = response_text.split('\n')
+        response_text = '\n'.join(lines[1:-1])
+        if response_text.startswith('json'):
+            response_text = response_text[4:].strip()
+    
+    # Parse JSON
+    result = json.loads(response_text)
+    
+    # Validate structure
+    if "keywords_you_have" not in result:
+        result["keywords_you_have"] = {"technical": [], "soft": []}
+    if "keywords_missing" not in result:
+        result["keywords_missing"] = {"technical": [], "soft": []}
+    
+    # Ensure nested keys exist
+    for key in ["keywords_you_have", "keywords_missing"]:
+        if "technical" not in result[key]:
+            result[key]["technical"] = []
+        if "soft" not in result[key]:
+            result[key]["soft"] = []
+    
+    return result
+
+def create_scoring_prompt(structured_sections: dict, job_description: str) -> str:
+    """
+    Create expert-level prompt for Gemini to score CV against job description
+    
+    Args:
+        structured_sections: Structured CV sections from MongoDB
+        job_description: Raw job description text
+        
+    Returns:
+        Formatted prompt string
+    """
+    return f"""
+You are an EXPERT CV EVALUATOR and RECRUITER with deep expertise in:
+- Assessing candidate-job fit for technical roles
+- Scoring CVs based on skills alignment, experience relevance, and content quality
+- Providing actionable feedback for CV improvement
+- Understanding ATS (Applicant Tracking Systems) optimization
+
+YOUR MISSION:
+Evaluate this candidate's CV against the job description and provide a comprehensive score breakdown.
+
+CANDIDATE'S CV DATA (STRUCTURED):
+
+Contact Information:
+{json.dumps(structured_sections.get('contact', {}), indent=2)}
+
+Skills:
+{json.dumps(structured_sections.get('skills', {}), indent=2)}
+
+Work Experience:
+{json.dumps(structured_sections.get('experience', []), indent=2)}
+
+Education:
+{json.dumps(structured_sections.get('education', []), indent=2)}
+
+Projects:
+{json.dumps(structured_sections.get('projects', []), indent=2)}
+
+Certifications:
+{json.dumps(structured_sections.get('certifications', []), indent=2)}
+
+JOB DESCRIPTION (FULL TEXT):
+{job_description}
+
+SCORING CRITERIA (100 POINTS TOTAL):
+
+1. JOB MATCH SCORE (35 points maximum):
+   - Technical skills alignment (20 pts): Count required skills in JD vs skills in CV
+   - Soft skills alignment (10 pts): Leadership, communication, problem-solving mentioned
+   - Domain knowledge (5 pts): Relevant industry/technology domain experience
+   
+   Calculation Logic:
+   - Count total required technical skills in JD
+   - Count how many the candidate HAS in their CV
+   - Technical score = (skills_matched / skills_required) * 20
+   - Evaluate soft skills similarly
+   - Be STRICT: only count explicitly mentioned skills
+
+2. EXPERIENCE RELEVANCE SCORE (30 points maximum):
+   - Job titles similarity (10 pts): How similar are their past roles to this role?
+   - Responsibilities alignment (15 pts): Do their past duties match JD requirements?
+   - Industry/company relevance (5 pts): Tech company vs non-tech, startup vs enterprise
+   
+   Calculation Logic:
+   - Analyze job titles in CV vs required role
+   - Compare responsibilities in experience bullets vs JD requirements
+   - Consider years of experience if mentioned in JD
+
+3. CONTENT QUALITY SCORE (20 points maximum):
+   - Bullet points structure (5 pts): Uses bullet points vs long paragraphs
+   - Action verbs (5 pts): Strong verbs like "Led", "Developed", "Implemented"
+   - Quantifiable metrics (7 pts): Numbers, percentages, impact metrics present
+   - Clarity and professionalism (3 pts): Clear, concise, professional tone
+   
+   Calculation Logic:
+   - Check if experience uses bullet points (good) vs paragraphs (bad)
+   - Count action verbs in bullets
+   - Count quantifiable achievements (e.g., "reduced latency by 40%")
+   - Evaluate overall clarity
+
+4. ATS & KEYWORDS SCORE (15 points maximum):
+   - CV completeness (5 pts): Has contact, education, experience, skills sections
+   - Keyword presence (7 pts): JD keywords appear naturally in CV
+   - Structure and organization (3 pts): Logical flow, no critical gaps
+   
+   Calculation Logic:
+   - Check for required sections (contact, education, experience, skills)
+   - Count how many JD keywords appear in CV
+   - Evaluate overall structure quality
+
+OVERALL RATING TIERS:
+- 90-100: "Excellent Match — Apply with Confidence"
+- 80-89: "Good Match — Competitive Candidate"
+- 70-79: "Decent Match — Fix Gaps to Compete"
+- 60-69: "Fair Match — Needs Work"
+- Below 60: "Poor Match — Major Revisions Needed"
+
+RETURN FORMAT:
+Return ONLY this JSON structure (no markdown, no code blocks, no explanation):
+
+{{
+  "overall_score": 72,
+  "max_score": 100,
+  "rating": "Decent Match — Fix Gaps to Compete",
+  "category_scores": {{
+    "job_match": {{
+      "score": 22,
+      "max_score": 35,
+      "percentage": 63,
+      "explanation": "Brief 1-2 sentence explanation of why this score"
+    }},
+    "experience_relevance": {{
+      "score": 20,
+      "max_score": 30,
+      "percentage": 67,
+      "explanation": "Brief 1-2 sentence explanation"
+    }},
+    "content_quality": {{
+      "score": 18,
+      "max_score": 20,
+      "percentage": 90,
+      "explanation": "Brief 1-2 sentence explanation"
+    }},
+    "ats_keywords": {{
+      "score": 12,
+      "max_score": 15,
+      "percentage": 80,
+      "explanation": "Brief 1-2 sentence explanation"
+    }}
+  }},
+  "strengths": [
+    "Specific strength 1",
+    "Specific strength 2",
+    "Specific strength 3"
+  ],
+  "gaps": [
+    "Specific gap 1",
+    "Specific gap 2",
+    "Specific gap 3"
+  ],
+  "recommendations": [
+    "Actionable recommendation 1",
+    "Actionable recommendation 2",
+    "Actionable recommendation 3"
+  ]
+}}
+
+CRITICAL RULES:
+1. Return ONLY the JSON object - no markdown, no code blocks, no explanatory text
+2. Calculate scores mathematically based on the logic provided
+3. Overall score MUST equal sum of all category scores
+4. Percentages should be calculated as (score/max_score)*100 and rounded
+5. Provide 3-5 specific strengths (what's working well)
+6. Provide 3-5 specific gaps (what's missing or weak)
+7. Provide 3-5 actionable recommendations (how to improve)
+8. Be honest and constructive - help the candidate improve
+9. Rating tier must match the overall_score range
+
+BEGIN EVALUATION NOW:
+"""
+
+def call_gemini_for_score(structured_sections: dict, job_description: str) -> dict:
+    """
+    Call Gemini API to score CV against job description
+    
+    Args:
+        structured_sections: Structured CV sections from MongoDB
+        job_description: Raw job description text
+        
+    Returns:
+        Dictionary with overall_score, category_scores, strengths, gaps, recommendations
+    """
+    model = initialize_gemini(service_type="score")
+    prompt = create_scoring_prompt(structured_sections, job_description)
+    
+    response = model.generate_content(prompt)
+    response_text = response.text.strip()
+    
+    # Clean up response (remove markdown if present)
+    if response_text.startswith('```'):
+        lines = response_text.split('\n')
+        response_text = '\n'.join(lines[1:-1])
+        if response_text.startswith('json'):
+            response_text = response_text[4:].strip()
+    
+    # Parse JSON
+    result = json.loads(response_text)
+    
+    # Validate structure
+    if "overall_score" not in result:
+        result["overall_score"] = 0
+    if "max_score" not in result:
+        result["max_score"] = 100
+    if "rating" not in result:
+        result["rating"] = "Unknown"
+    if "category_scores" not in result:
+        result["category_scores"] = {}
+    if "strengths" not in result:
+        result["strengths"] = []
+    if "gaps" not in result:
+        result["gaps"] = []
+    if "recommendations" not in result:
+        result["recommendations"] = []
+    
+    return result
 
