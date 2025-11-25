@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from app.service import store_cv, get_cv_by_id
+from app.service import store_cv, get_cv_by_id, get_all_cvs
 
 router = APIRouter()
 
@@ -49,4 +49,18 @@ async def get_cv_endpoint(cv_id: str):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve CV: {str(e)}")
+
+@router.get("/internal/get_all_cvs")
+async def get_all_cvs_endpoint():
+    """
+    Get all CVs for dropdown selection
+    
+    Returns:
+        List of CVs with cv_id, filename, created_at
+    """
+    try:
+        cvs = get_all_cvs()
+        return cvs
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve CVs: {str(e)}")
 

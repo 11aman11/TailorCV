@@ -49,3 +49,18 @@ def find_latest_cv() -> dict:
         projection={"_id": 0}
     )
 
+def find_all_cvs() -> list:
+    """
+    Find top 10 most recently uploaded CVs (for dropdown selection)
+    
+    Returns:
+        List of up to 10 CVs with limited fields (cv_id, filename, created_at)
+        Sorted by most recent first
+    """
+    cvs = collection.find(
+        {},
+        {"_id": 0, "cv_id": 1, "metadata.filename": 1, "created_at": 1}
+    ).sort("created_at", DESCENDING).limit(10)
+    
+    return list(cvs)
+
