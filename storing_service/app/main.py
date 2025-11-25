@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from app.api import router
 from app.db_mongo import create_indexes
+from app.events import close_rabbitmq_connection
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,6 +16,11 @@ app = FastAPI(
 def startup_event():
     """Initialize database indexes on startup"""
     create_indexes()
+
+@app.on_event("shutdown")
+def shutdown_event():
+    """Clean up connections on shutdown"""
+    close_rabbitmq_connection()
 
 app.include_router(router)
 
