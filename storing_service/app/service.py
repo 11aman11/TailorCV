@@ -1,6 +1,7 @@
 import hashlib
 from datetime import datetime
 from app.db_mongo import find_cv_by_id, insert_cv_document, find_all_cvs
+from app.events import publish_cv_event
 
 def store_cv(structured_json: dict, cv_text: str) -> dict:
     """
@@ -38,6 +39,13 @@ def store_cv(structured_json: dict, cv_text: str) -> dict:
     
     # Insert into MongoDB
     insert_cv_document(document)
+    
+    # Publish to RabbitMQ for async embedding (non-blocking)
+    try:
+        publish_cv_event(cv_id)
+    except Exception as e:
+        print(f"Warning: Failed to publish to RabbitMQ: {e}")
+        # Continue even if RabbitMQ fails
     
     return {
         "cv_id": cv_id,

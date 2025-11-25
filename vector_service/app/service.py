@@ -1,31 +1,54 @@
-# VectorService - Business Logic
-# Handles chunking, embedding, and semantic search
-#
-# Functions:
-# - find_similar_chunks(jd_text) -> chunks
-#   * Embed JD using embedder.py
-#   * Query Pinecone using pinecone_client.py
-#   * Return similar chunks with metadata
-#
-# - search_top_k_cvs(jd_text, top_k) -> cv_ids with scores
-#   * Embed JD using embedder.py
-#   * Query Pinecone for similar vectors
-#   * Aggregate scores by cv_id (sum or average)
-#   * Sort and return top k
-#
-# - process_cv_for_embedding(cv_id) -> success/failure
-#   * Called by mq_consumer.py when cv.created event received
-#   * Fetch CV from StoringService
-#   * Chunk CV by sections
-#   * Embed each chunk
-#   * Upsert to Pinecone with metadata
-#
-# Chunking Strategy:
-# - Each section (experience, projects, skills, education) = 1 chunk
-# - Metadata per chunk: {cv_id, section, raw_text}
-#
-# Responsibilities:
-# - Chunking logic
-# - Orchestrate embedding and vector operations
-# - Coordinate between StoringService and Pinecone
+import os
+import requests
+from dotenv import load_dotenv
 
+load_dotenv()
+
+STORING_SERVICE_URL = os.getenv("STORING_SERVICE_URL", "http://localhost:8001")
+
+def process_cv_for_embedding(cv_id: str):
+    """
+    Process CV for embedding (called by RabbitMQ consumer)
+    
+    Flow:
+    1. Fetch CV from StoringService
+    2. Extract structured_sections
+    3. Chunk sections (TODO: implement chunking)
+    4. Embed chunks (TODO: implement embedding)
+    5. Upload to Pinecone (TODO: implement Pinecone upload)
+    
+    Args:
+        cv_id: CV identifier
+    """
+    print(f"Processing CV for embedding: {cv_id}")
+    
+    try:
+        # Fetch CV from StoringService
+        response = requests.get(
+            f"{STORING_SERVICE_URL}/internal/get_cv/{cv_id}",
+            timeout=10
+        )
+        
+        if response.status_code != 200:
+            raise Exception(f"Failed to fetch CV: {response.status_code}")
+        
+        cv_data = response.json()
+        structured_sections = cv_data.get("structured_sections", {})
+        
+        print(f"Fetched CV: {cv_id}")
+        print(f"Sections found: {list(structured_sections.keys())}")
+        
+        # TODO: Implement chunking logic
+        # chunks = chunk_structured_sections(structured_sections, cv_id)
+        
+        # TODO: Implement embedding
+        # embedded_chunks = embed_chunks(chunks)
+        
+        # TODO: Upload to Pinecone
+        # upsert_to_pinecone(embedded_chunks)
+        
+        print(f"CV processing complete: {cv_id}")
+        
+    except Exception as e:
+        print(f"Error processing CV {cv_id}: {e}")
+        raise
