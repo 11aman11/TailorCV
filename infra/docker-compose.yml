@@ -1,18 +1,7 @@
-version: "3.9"
-
 services:
   # ===========================
   # Core Infrastructure
   # ===========================
-  redis:
-    image: redis:7
-    container_name: redis
-    restart: always
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
@@ -37,7 +26,6 @@ services:
     env_file:
       - ./.env
     depends_on:
-      - redis
       - rabbitmq
     ports:
       - "8001:8001"
@@ -92,6 +80,3 @@ services:
       - vector_service
     ports:
       - "8000:8000"
-
-volumes:
-  redis_data:
