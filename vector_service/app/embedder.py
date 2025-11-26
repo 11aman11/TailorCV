@@ -117,85 +117,76 @@ def chunk_structured_sections(structured_sections: Dict[str, Any], cv_id: str) -
 
 def extract_text_from_object(obj: Dict[str, Any], section: str) -> str:
     """
-    Extract meaningful text from object based on section type
-    
-    Args:
-        obj: Object from structured sections
-        section: Section name (experience, projects, education, etc.)
-        
-    Returns:
-        Formatted text string for chunking
+    Extract meaningful text from object based on section type.
+
+    Ensures we never pass None into " - ".join(...).
     """
+    # Small helper to build a clean parts list
+    def _clean_join(parts):
+        clean = [str(p) for p in parts if p]  # drop None / empty, cast to str
+        return " - ".join(clean) if clean else None
+
     if section == "experience":
-        company = obj.get("company", "")
-        title = obj.get("title", "")
-        bullets = obj.get("bullets", [])
-        
+        company = obj.get("company") or ""
+        title = obj.get("title") or ""
+        bullets = obj.get("bullets") or []
+
         if bullets:
-            # Each bullet becomes separate chunk (handled in chunk_structured_sections)
-            # But we need to return text for each bullet
-            return None  # Will be handled separately below
-        
-        # Fallback if no bullets
-        location = obj.get("location", "")
-        return f"{company} - {title} {location}".strip()
-    
+            # Each bullet becomes separate chunk (handled elsewhere)
+            return None
+
+        location = obj.get("location") or ""
+        return _clean_join([company, title, location])
+
     elif section == "projects":
-        name = obj.get("name", "")
-        description = obj.get("description", "")
-        techs = obj.get("technologies", [])
-        
-        parts = [name]
+        name = obj.get("name") or ""
+        description = obj.get("description") or ""
+        techs = obj.get("technologies") or []
+
+        parts = []
+        if name:
+            parts.append(name)
         if description:
             parts.append(description)
         if techs:
-            parts.append(f"Technologies: {', '.join(techs)}")
-        
-        return " - ".join(parts) if parts else None
-    
+            parts.append("Technologies: " + ", ".join(str(t) for t in techs if t))
+
+        return _clean_join(parts)
+
     elif section == "education":
-        institution = obj.get("institution", "")
-        degree = obj.get("degree", "")
-        field = obj.get("field", "")
-        gpa = obj.get("gpa", "")
-        
-        parts = [institution]
-        if degree:
-            parts.append(degree)
-        if field:
-            parts.append(field)
+        institution = obj.get("institution") or ""
+        degree = obj.get("degree") or ""
+        field = obj.get("field") or ""
+        gpa = obj.get("gpa") or ""
+
+        parts = [institution, degree, field]
         if gpa:
             parts.append(f"GPA: {gpa}")
-        
-        return " - ".join(parts) if parts else None
-    
+
+        return _clean_join(parts)
+
     elif section == "leadership":
-        role = obj.get("role", "")
-        organization = obj.get("organization", "")
-        description = obj.get("description", "")
-        
-        parts = [role]
-        if organization:
-            parts.append(organization)
-        if description:
-            parts.append(description)
-        
-        return " - ".join(parts) if parts else None
-    
+        role = obj.get("role") or ""
+        organization = obj.get("organization") or ""
+        description = obj.get("description") or ""
+
+        parts = [role, organization, description]
+        return _clean_join(parts)
+
     elif section == "certifications":
-        name = obj.get("name", "")
-        issuer = obj.get("issuer", "")
-        date = obj.get("date", "")
-        
+        name = obj.get("name") or ""
+        issuer = obj.get("issuer") or ""
+        date = obj.get("date") or ""
+
         parts = [name]
         if issuer:
             parts.append(f"by {issuer}")
         if date:
             parts.append(date)
-        
-        return " - ".join(parts) if parts else None
-    
-    # Generic fallback
+
+        return _clean_join(parts)
+
+    # Generic fallback: stringify object
     return str(obj)
 
 def chunk_projects_bullets(projects_list: List[Dict], cv_id: str) -> List[Dict[str, Any]]:
