@@ -1,19 +1,97 @@
-# Docker Compose for Local Development
-# Runs all services and infrastructure components
-#
-# Services:
-# - api_gateway (port 8000)
-# - storing_service (port 8001)
-# - gemini_service (port 8002)
-# - vector_service (port 8003)
-# - mongodb (port 27017)
-# - redis (port 6379)
-# - rabbitmq (port 5672, management 15672)
-#
-# Note: Pinecone is cloud-based, not included here
-#
-# Usage:
-# docker-compose up -d
-#
-# This file will be populated with actual service definitions later
+version: "3.9"
 
+services:
+  # ===========================
+  # Core Infrastructure
+  # ===========================
+  redis:
+    image: redis:7
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # Management UI
+    env_file:
+      - ./.env
+    # volumes:
+    #   - ./configs/rabbitmq-config.json:/etc/rabbitmq/definitions.json:ro
+
+  # ===========================
+  # Storing Service (8001)
+  # ===========================
+  storing_service:
+    build:
+      context: ../storing_service
+      dockerfile: Dockerfile
+    container_name: storing_service
+    restart: always
+    env_file:
+      - ./.env
+    depends_on:
+      - redis
+      - rabbitmq
+    ports:
+      - "8001:8001"
+
+  # ===========================
+  # Gemini Service (8002)
+  # ===========================
+  gemini_service:
+    build:
+      context: ../gemini_service
+      dockerfile: Dockerfile
+    container_name: gemini_service
+    restart: always
+    env_file:
+      - ./.env
+    depends_on:
+      - storing_service
+    ports:
+      - "8002:8002"
+
+  # ===========================
+  # Vector Service (8003)
+  # ===========================
+  vector_service:
+    build:
+      context: ../vector_service
+      dockerfile: Dockerfile
+    container_name: vector_service
+    restart: always
+    env_file:
+      - ./.env
+    depends_on:
+      - rabbitmq
+      - storing_service
+    ports:
+      - "8003:8003"
+
+  # ===========================
+  # API Gateway (8000)
+  # ===========================
+  api_gateway:
+    build:
+      context: ../api_gateway
+      dockerfile: Dockerfile
+    container_name: api_gateway
+    restart: always
+    env_file:
+      - ./.env
+    depends_on:
+      - storing_service
+      - gemini_service
+      - vector_service
+    ports:
+      - "8000:8000"
+
+volumes:
+  redis_data:

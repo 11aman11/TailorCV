@@ -7,4 +7,5 @@ pymongo==4.6.0
 redis==5.0.1
 pika==1.3.2
 pydantic==2.5.0
+python-dotenv==1.0.0
 
